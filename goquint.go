@@ -5,7 +5,8 @@
 //
 // A proquint encodes a 16-bit value as a 5-character "quintuplet" of
 // alternating consonants and vowels (CVCVC). Two quintuplets separated
-// by a hyphen encode a 32-bit value (e.g. "lusab-babad").
+// by a hyphen encode a 32-bit value (e.g. "lusab-babad"), and four
+// quintuplets encode a 64-bit value (e.g. "lusab-babad-lusab-babad").
 package goquint
 
 import (
@@ -69,6 +70,61 @@ func EncodeHex(hexStr string) string {
 	var num uint32
 	fmt.Sscanf(hexStr[:8], "%x", &num)
 	return Encode(num)
+}
+
+// Encode64 converts a 64-bit number to a proquint string with four quintuplets
+// (e.g. "lusab-babad-lusab-babad").
+func Encode64(n uint64) string {
+	high := Encode(uint32(n >> 32))
+	low := Encode(uint32(n & 0xFFFFFFFF))
+	return high + "-" + low
+}
+
+// Decode64 converts a four-quintuplet proquint string back to a 64-bit number.
+// Hyphens in the input are ignored.
+func Decode64(proquint string) (uint64, error) {
+	clean := ""
+	for _, ch := range proquint {
+		if ch != '-' {
+			clean += string(ch)
+		}
+	}
+
+	if len(clean) != 20 {
+		return 0, fmt.Errorf("goquint: invalid proquint64 length: expected 20 characters, got %d", len(clean))
+	}
+
+	high, err := Decode(clean[:10])
+	if err != nil {
+		return 0, err
+	}
+
+	low, err := Decode(clean[10:])
+	if err != nil {
+		return 0, err
+	}
+
+	return uint64(high)<<32 | uint64(low), nil
+}
+
+// Random64 generates a random 64-bit proquint using crypto/rand.
+func Random64() string {
+	hi, _ := rand.Int(rand.Reader, big.NewInt(0xFFFFFFFF))
+	lo, _ := rand.Int(rand.Reader, big.NewInt(0xFFFFFFFF))
+	n := uint64(hi.Int64())<<32 | uint64(lo.Int64())
+	return Encode64(n)
+}
+
+// EncodeHex64 converts the first 64 bits of a hex string to a four-quintuplet proquint.
+// If the hex string is shorter than 16 characters, a random 64-bit proquint is returned.
+func EncodeHex64(hexStr string) string {
+	if len(hexStr) < 16 {
+		return Random64()
+	}
+
+	var num uint64
+	fmt.Sscanf(hexStr[:16], "%x", &num)
+	return Encode64(num)
 }
 
 func encodeQuintuplet(high, low byte) string {
